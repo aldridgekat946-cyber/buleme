@@ -63,7 +63,7 @@ export const getAIInterpretationStream = async function* (data: DivinationResult
       attempt++;
       console.error(`Gemini API Error (Attempt ${attempt}):`, error);
       if (attempt > retries) {
-        yield "\n\n[系统提示：解析时网络波动，请检查您的网络并稍后再试。]";
+        throw new Error("Network Error");
       } else {
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
