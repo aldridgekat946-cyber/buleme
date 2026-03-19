@@ -15,6 +15,8 @@ const App: React.FC = () => {
   const [aiInterpretation, setAiInterpretation] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(false);
+  const [analysisStatus, setAnalysisStatus] = useState('');
+  const [progress, setProgress] = useState(0);
 
   const initiateDivination = () => {
     if (!question.trim()) {
@@ -27,24 +29,44 @@ const App: React.FC = () => {
     setResult(null);
     setAiInterpretation('');
     setAnalysisError(false);
+    setAnalysisStatus('');
+    setProgress(0);
   };
 
   const fetchInterpretation = async (divinationResult: DivinationResult) => {
     setIsAnalyzing(true);
     setAiInterpretation('');
     setAnalysisError(false);
+    setAnalysisStatus('准备解析...');
+    setProgress(0);
+    
+    let intervalId = setInterval(() => {
+      setProgress(p => Math.min(p + Math.random() * 10, 90));
+    }, 500);
     
     try {
       const stream = getAIInterpretationStream(divinationResult);
-      for await (const chunk of stream) {
-        setAiInterpretation(prev => prev + chunk);
-        setIsAnalyzing(false); // Turn off analyzing state once we get the first chunk
+      for await (const update of stream) {
+        if (update.type === 'status') {
+          setAnalysisStatus(update.content);
+        } else if (update.type === 'chunk') {
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = 0;
+            setProgress(100);
+            // short delay to show 100% before hiding
+            await new Promise(r => setTimeout(r, 200));
+            setIsAnalyzing(false);
+          }
+          setAiInterpretation(prev => prev + update.content);
+        }
       }
     } catch (error) {
       console.error("Stream error:", error);
       setAiInterpretation(prev => prev + "\n\n[系统提示：解析时网络波动，请检查您的网络并稍后再试。]");
       setAnalysisError(true);
     } finally {
+      if (intervalId) clearInterval(intervalId);
       setIsAnalyzing(false);
     }
   };
@@ -167,13 +189,19 @@ const App: React.FC = () => {
                       <span className="text-9xl font-black">AI</span>
                    </div>
                   {isAnalyzing ? (
-                    <div className="py-20 flex flex-col items-center gap-6">
-                      <div className="flex gap-2">
+                    <div className="py-20 flex flex-col items-center gap-6 w-full max-w-md mx-auto">
+                      <div className="flex gap-2 mb-2">
                         <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce"></div>
                         <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce delay-100"></div>
                         <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce delay-200"></div>
                       </div>
-                      <p className="text-slate-400 font-bold tracking-widest animate-pulse">正在穿透表象，解析五行干支生克...</p>
+                      <p className="text-slate-500 font-bold tracking-widest animate-pulse text-center h-6">{analysisStatus || '正在穿透表象，解析五行干支生克...'}</p>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-300 ease-out rounded-full"
+                          style={{ width: `${progress}%` }}
+                        ></div>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-slate-700 leading-relaxed text-xl whitespace-pre-wrap font-medium">

@@ -36,13 +36,19 @@ ${data.hexagram.primary.lines.map(l => {
 
 请以此逻辑，给出最直白、最真实、不虚美不隐恶的解读报告。`;
 
-export const getAIInterpretationStream = async function* (data: DivinationResult, retries = 2): AsyncGenerator<string, void, unknown> {
+export type StreamUpdate = 
+  | { type: 'status', content: string }
+  | { type: 'chunk', content: string };
+
+export const getAIInterpretationStream = async function* (data: DivinationResult, retries = 2): AsyncGenerator<StreamUpdate, void, unknown> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = buildPrompt(data);
 
   let attempt = 0;
   while (attempt <= retries) {
     try {
+      yield { type: 'status', content: attempt === 0 ? '正在连接天机网络...' : `网络波动，正在进行第 ${attempt} 次重试...` };
+      
       const responseStream = await ai.models.generateContentStream({
         model: 'gemini-3.1-pro-preview',
         contents: prompt,
@@ -53,9 +59,11 @@ export const getAIInterpretationStream = async function* (data: DivinationResult
         }
       });
       
+      yield { type: 'status', content: '连接成功，正在接收解读...' };
+      
       for await (const chunk of responseStream) {
         if (chunk.text) {
-          yield chunk.text;
+          yield { type: 'chunk', content: chunk.text };
         }
       }
       return; // Success, exit the generator
@@ -65,6 +73,7 @@ export const getAIInterpretationStream = async function* (data: DivinationResult
       if (attempt > retries) {
         throw new Error("Network Error");
       } else {
+        yield { type: 'status', content: `连接失败，等待重试 (${attempt}/${retries})...` };
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
       }
